@@ -1,4 +1,10 @@
-# Case Study #1: Danny's Diner
+# Case Study 1: Danny's Diner
+
+## Table of Contents
+
+[Entity Relationship Diagram](#entity-relationship-diagram)
+[Datasets](#datasets)
+[Questions \& Solution](#questions--solution)
 
 ## Entity Relationship Diagram
 
