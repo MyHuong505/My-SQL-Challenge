@@ -2,9 +2,9 @@
 
 ## Table of Contents
 
-[Entity Relationship Diagram](#entity-relationship-diagram)
-[Datasets](#datasets)
-[Questions \& Solution](#questions--solution)
+1/ [Entity Relationship Diagram](#entity-relationship-diagram)
+2/ [Datasets](#datasets)
+3/ [Questions \& Solution](#questions--solution)
 
 ## Entity Relationship Diagram
 
