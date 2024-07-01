@@ -1,0 +1,226 @@
+--B. Data Analysis Questions
+--1. How many customers has Foodie-Fi ever had?
+SELECT COUNT(DISTINCT customer_id) as number_of_cust
+FROM subscriptions
+GO
+
+--2. What is the monthly distribution of trial plan start_date values for our dataset - use the start of the month as the group by value
+SELECT
+  DATEPART(month, start_date) AS month_date, 
+  COUNT(s.customer_id) AS trial_plan_subscriptions
+FROM subscriptions AS s
+JOIN plans p
+  ON s.plan_id = p.plan_id
+WHERE s.plan_id = 0 
+GROUP BY DATEPART(month,start_date)
+ORDER BY month_date;
+GO
+
+--3. What plan start_date values occur after the year 2020 for our dataset? Show the breakdown by count of events for each plan_name.
+SELECT 
+  plans.plan_id,
+  plans.plan_name,
+  COUNT(sub.customer_id) AS num_of_events
+FROM subscriptions AS sub
+JOIN plans
+  ON sub.plan_id = plans.plan_id
+WHERE sub.start_date >= '2021-01-01'
+GROUP BY plans.plan_id, plans.plan_name
+ORDER BY plans.plan_id
+GO
+
+--4. What is the customer count and percentage of customers who have churned rounded to 1 decimal place?
+SELECT 
+    churned_customers,
+    ROUND(100.0 * churned_customers / total_customers, 1) AS churn_percentage
+FROM (
+    SELECT
+        COUNT(DISTINCT CASE WHEN p.plan_id = 4 THEN s.customer_id END) AS churned_customers,
+        COUNT(DISTINCT s.customer_id) AS total_customers
+    FROM subscriptions s
+    LEFT JOIN plans p ON s.plan_id = p.plan_id
+) AS subquery;
+GO
+
+
+  SELECT 
+    sub.customer_id, 
+    plans.plan_id, 
+    ROW_NUMBER() OVER (
+      PARTITION BY sub.customer_id 
+      ORDER BY sub.start_date) AS row_num
+  FROM subscriptions AS sub
+  JOIN plans 
+    ON sub.plan_id = plans.plan_id
+
+--5. How many customers have churned straight after their initial free trial - what percentage is this rounded to the nearest whole number?
+--Solution 1
+WITH ranked_cte AS (
+  SELECT 
+    sub.customer_id, 
+    plans.plan_id, 
+    ROW_NUMBER() OVER (
+      PARTITION BY sub.customer_id 
+      ORDER BY sub.start_date) AS row_num
+  FROM subscriptions AS sub
+  JOIN plans 
+    ON sub.plan_id = plans.plan_id
+)
+  
+SELECT 
+  COUNT(*) AS churned_customers,  
+  ROUND(100.0 * COUNT(*) 
+    / (SELECT COUNT(DISTINCT customer_id) 
+        FROM subscriptions), 2) AS churn_percentage
+FROM ranked_cte
+WHERE plan_id = 4 
+  AND row_num = 2; 
+
+--Solution 2
+WITH cte AS (
+  SELECT
+    sub.customer_id,
+    plans.plan_name,
+    LEAD(plans.plan_name) OVER (PARTITION BY sub.customer_id ORDER BY sub.start_date) AS next_plan
+  FROM subscriptions sub
+  JOIN plans ON plans.plan_id = sub.plan_id
+)
+SELECT
+  COUNT(customer_id) AS churned_customers,
+  ROUND(100.0 * COUNT(customer_id) / (SELECT COUNT(DISTINCT customer_id) FROM subscriptions), 2) AS churn_percentage
+FROM cte 
+WHERE plan_name = 'trial' 
+  AND next_plan = 'churn';
+  GO
+
+--6. What is the number and percentage of customer plans after their initial free trial?
+WITH next_plans AS (
+  SELECT 
+    customer_id, 
+    plan_id, 
+    LEAD(plan_id) OVER (
+      PARTITION BY customer_id 
+      ORDER BY plan_id
+    ) AS next_plan_id
+  FROM subscriptions
+)
+
+SELECT 
+  next_plan_id AS planID, 
+  COUNT(customer_id) AS converted_customers,
+  ROUND(100.0 * COUNT(customer_id) / NULLIF(COUNT(DISTINCT customer_id), 0), 1) AS conversion_percentage
+FROM next_plans
+WHERE next_plan_id IS NOT NULL 
+  AND plan_id = 0
+GROUP BY next_plan_id
+ORDER BY next_plan_id;
+GO
+
+--7. What is the customer count and percentage breakdown of all 5 plan_name values at 2020-12-31?
+WITH next_dates AS (
+  SELECT
+    customer_id,
+    plan_id,
+  	start_date,
+    LEAD(start_date) OVER (
+      PARTITION BY customer_id
+      ORDER BY start_date
+    ) AS next_date
+  FROM subscriptions
+  WHERE start_date <= '2020-12-31'
+)
+
+SELECT
+	plan_id, 
+	COUNT(DISTINCT customer_id) AS customers,
+  ROUND(100.0 * 
+    COUNT(DISTINCT customer_id)
+    / (SELECT COUNT(DISTINCT customer_id) 
+      FROM subscriptions)
+  ,1) AS percentage
+FROM next_dates
+WHERE next_date IS NULL
+GROUP BY plan_id;
+
+--8. How many customers have upgraded to an annual plan in 2020?
+SELECT COUNT(DISTINCT customer_id) AS num_of_customers
+FROM subscriptions
+WHERE plan_id = 3
+  AND start_date <= '2020-12-31';
+
+--9. How many days on average does it take for a customer to upgrade to an annual plan from the day they join Foodie-Fi?
+WITH trial_plan AS (
+  SELECT 
+    customer_id, 
+    start_date AS trial_date
+  FROM subscriptions
+  WHERE plan_id = 0
+), annual_plan AS (
+  SELECT 
+    customer_id, 
+    start_date AS annual_date
+  FROM subscriptions
+  WHERE plan_id = 3
+)
+
+SELECT 
+  ROUND(
+    AVG(
+      DATEDIFF(day, trial.trial_date, annual.annual_date)
+    ), 0) AS avg_days_to_upgrade
+FROM trial_plan AS trial
+JOIN annual_plan AS annual
+  ON trial.customer_id = annual.customer_id;
+
+--10. Can you further breakdown this average value into 30 day periods (i.e. 0-30 days, 31-60 days etc)
+WITH trial_plan AS (
+  SELECT 
+    customer_id, 
+    start_date AS trial_date
+  FROM subscriptions
+  WHERE plan_id = 0
+), annual_plan AS (
+  SELECT 
+    customer_id, 
+    start_date AS annual_date
+  FROM subscriptions
+  WHERE plan_id = 3
+), bins AS (
+  SELECT 
+    trial.customer_id,
+    DATEDIFF(day, trial.trial_date, annual.annual_date) AS days_to_upgrade,
+    FLOOR(DATEDIFF(day, trial.trial_date, annual.annual_date) / 30.42) + 1 AS bucket_id
+  FROM trial_plan AS trial
+  JOIN annual_plan AS annual
+    ON trial.customer_id = annual.customer_id
+)
+  
+SELECT 
+  CONCAT(((bucket_id - 1) * 30), ' - ', (bucket_id * 30), ' days') AS bucket, 
+  COUNT(*) AS num_of_customers
+FROM bins
+GROUP BY bucket_id
+ORDER BY bucket_id;
+GO
+
+--11. How many customers downgraded from a pro monthly to a basic monthly plan in 2020?
+WITH ranked_cte AS (
+  SELECT 
+    sub.customer_id,  
+  	plans.plan_id,
+    plans.plan_name, 
+	  LEAD(plans.plan_id) OVER ( 
+      PARTITION BY sub.customer_id
+      ORDER BY sub.start_date) AS next_plan_id
+  FROM subscriptions AS sub
+  JOIN plans 
+    ON sub.plan_id = plans.plan_id
+ WHERE DATEPART(year, start_date) = 2020
+)
+  
+SELECT 
+  COUNT(customer_id) AS churned_customers
+FROM ranked_cte
+WHERE plan_id = 2
+  AND next_plan_id = 1;
+GO
